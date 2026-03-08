@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 
 namespace remote_operations;
 
@@ -53,16 +54,22 @@ public class WebSocketClientService(IConfiguration config, ILogger<WebSocketClie
         // Send current OS info immediately on connect
         await SendAsync(ws, new
         {
-            type        = "hello",
             status      = "online",
-            machineName = Environment.MachineName,
             os          = RuntimeInformation.OSDescription,
             platform    = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "linux",
             macAddr     = (
                             from nic in NetworkInterface.GetAllNetworkInterfaces()
                             where nic.OperationalStatus == OperationalStatus.Up
                             select nic.GetPhysicalAddress().ToString()
-                          ).FirstOrDefault()
+                          ).FirstOrDefault(),
+            ipAddress = (
+                            from nic in NetworkInterface.GetAllNetworkInterfaces()
+                            where nic.OperationalStatus == OperationalStatus.Up
+                            && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                            from addr in nic.GetIPProperties().UnicastAddresses
+                            where addr.Address.AddressFamily == AddressFamily.InterNetwork
+                            select addr.Address.ToString()
+                        ).FirstOrDefault()
         }, ct);
 
         // Run receive loop and heartbeat concurrently; stop both if either exits
