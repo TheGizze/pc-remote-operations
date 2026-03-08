@@ -64,11 +64,13 @@ public class RebootController : ControllerBase
                 RunCommand("shutdown", "/r /t 5");
             }
             else
+            {
                 if(resolvedId != null)
                 {
                     RunCommand("grub2-reboot", resolvedId);
                 }
                 RunCommand("(sleep 5 ; reboot) &", "");
+            }
 
             return Ok(new
             {
