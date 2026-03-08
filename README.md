@@ -229,6 +229,45 @@ journalctl -u remote-operations -f
 
 ---
 
+## Updating the service
+
+After making code changes, republish and restart the service. The service registration itself does not need to be repeated.
+
+### Windows
+
+Open **PowerShell as Administrator** from the project directory:
+
+```powershell
+# 1. Stop the running service
+sc.exe stop RemoteOperations
+
+# 2. Republish over the existing directory
+dotnet publish -c Release -r win-x64 --self-contained -o C:\Services\remote_operations
+
+# 3. Start the service again
+sc.exe start RemoteOperations
+```
+
+### Linux
+
+Run from the project directory:
+
+```bash
+# 1. Stop the running service
+sudo systemctl stop remote-operations
+
+# 2. Republish over the existing directory
+dotnet publish -c Release -r linux-x64 --self-contained -o /opt/remote_operations
+chmod +x /opt/remote_operations/remote_operations
+
+# 3. Start the service again
+sudo systemctl start remote-operations
+```
+
+> The `.service` unit file in `/etc/systemd/system/` only needs to be updated if you change the install path or want to modify service settings (e.g. restart policy). If you do edit it, run `sudo systemctl daemon-reload` before restarting the service.
+
+---
+
 ## Platform notes
 
 | | Windows | Linux |
