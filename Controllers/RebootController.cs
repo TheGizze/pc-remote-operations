@@ -159,10 +159,13 @@ public class RebootController : ControllerBase
             var m = pattern.Match(line);
             if (!m.Success) continue;
 
+            var title = m.Groups[1].Value.Trim();
             entries.Add(new BootEntry
             {
-                Id          = index.ToString(),
-                Description = m.Groups[1].Value.Trim(),
+                // Use the title as ID: grub2-reboot accepts titles and it's more reliable
+                // than numeric indices, which diverge when submenus are present in grub.cfg.
+                Id          = title,
+                Description = title,
                 IsDefault   = index.ToString() == savedDefault
             });
             index++;
