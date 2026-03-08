@@ -40,16 +40,16 @@ public class RebootController : ControllerBase
     {
         try
         {
-            if (request?.TargetEntryId is { } entryId)
-            {
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    RunCommand("bcdedit", $"/bootsequence {entryId}");
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                    RunCommand("grub-reboot", entryId);
-            }
-
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (request?.TargetEntryId is { } entryId)
+                    RunCommand("bcdedit", $"/bootsequence {entryId}");
+                else
+                    // Ensure the firmware boots back into Windows Boot Manager by default
+                    RunCommand("bcdedit", "/set \"{fwbootmgr}\" bootsequence \"{bootmgr}\"");
+
                 RunCommand("shutdown", "/r /t 5");
+            }
             else
                 RunCommand("shutdown", "-r now");
 
