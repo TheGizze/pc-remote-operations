@@ -1,5 +1,8 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// Enables proper Windows Service lifecycle (start/stop signals from SCM)
+builder.Host.UseWindowsService();
+
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
