@@ -1,0 +1,25 @@
+@remote_operations_HostAddress = http://localhost:5000
+
+### List available boot entries
+GET {{remote_operations_HostAddress}}/reboot/entries
+Accept: application/json
+
+###
+
+### Reboot into the current/default OS
+POST {{remote_operations_HostAddress}}/reboot
+Content-Type: application/json
+
+{}
+
+###
+
+### Reboot into a specific OS entry (replace ID with one from /reboot/entries)
+POST {{remote_operations_HostAddress}}/reboot
+Content-Type: application/json
+
+{
+  "targetEntryId": "{00000000-0000-0000-0000-000000000000}"
+}
+
+###
