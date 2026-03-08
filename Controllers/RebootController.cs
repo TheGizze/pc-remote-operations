@@ -67,9 +67,9 @@ public class RebootController : ControllerBase
             {
                 if(resolvedId != null)
                 {
-                    RunCommand("grub2-reboot", resolvedId);
+                    RunCommand("bash", $"-c \"grub2-reboot {resolvedId}\"");
                 }
-                RunCommand("(sleep 5 ; reboot) &", "");
+                RunCommand("bash", "-c \"(sleep 5; reboot) &\"");
             }
 
             return Ok(new
