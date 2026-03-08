@@ -60,6 +60,9 @@ public class WebSocketClientService(IConfiguration config, ILogger<WebSocketClie
             macAddr     = (
                             from nic in NetworkInterface.GetAllNetworkInterfaces()
                             where nic.OperationalStatus == OperationalStatus.Up
+                            && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                            && nic.GetPhysicalAddress().GetAddressBytes().Length > 0
+                            && nic.GetPhysicalAddress().GetAddressBytes().Any(b => b != 0)
                             select nic.GetPhysicalAddress().ToString()
                           ).FirstOrDefault(),
             ipAddress = (
