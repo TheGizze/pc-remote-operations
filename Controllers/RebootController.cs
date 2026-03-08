@@ -40,10 +40,23 @@ public class RebootController : ControllerBase
     {
         try
         {
+            // Resolve description → ID if caller used TargetDescription
+            string? resolvedId = request?.TargetEntryId;
+            if (resolvedId == null && request?.TargetDescription is { } desc)
+            {
+                var entries = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? GetWindowsBootEntries()
+                    : GetLinuxBootEntries();
+
+                resolvedId = entries
+                    .FirstOrDefault(e => e.Description.Equals(desc, StringComparison.OrdinalIgnoreCase))
+                    ?.Id ?? throw new InvalidOperationException($"No boot entry found with description '{desc}'");
+            }
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                if (request?.TargetEntryId is { } entryId)
-                    RunCommand("bcdedit", $"/bootsequence {entryId}");
+                if (resolvedId != null)
+                    RunCommand("bcdedit", $"/bootsequence {resolvedId}");
                 else
                     // Ensure the firmware boots back into Windows Boot Manager by default
                     RunCommand("bcdedit", "/set \"{fwbootmgr}\" bootsequence \"{bootmgr}\"");
@@ -55,8 +68,8 @@ public class RebootController : ControllerBase
 
             return Ok(new
             {
-                message = "Reboot initiated" + (request?.TargetEntryId != null ? $" → {request.TargetEntryId}" : ""),
-                targetEntryId = request?.TargetEntryId
+                message = "Reboot initiated" + (resolvedId != null ? $" → {resolvedId}" : ""),
+                targetEntryId = resolvedId
             });
         }
         catch (Exception ex)
@@ -185,4 +198,4 @@ public record BootEntry
     public bool   IsDefault   { get; init; }
 }
 
-public record RebootRequest(string? TargetEntryId);
+public record RebootRequest(string? TargetEntryId, string? TargetDescription);
