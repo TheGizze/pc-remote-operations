@@ -136,9 +136,10 @@ public class RebootController : ControllerBase
     private static List<BootEntry> GetLinuxBootEntries()
     {
         // Read GRUB config and extract menuentry titles; index == grub-reboot argument
-        const string grubCfg = "/boot/grub/grub.cfg";
-        if (!System.IO.File.Exists(grubCfg))
-            throw new FileNotFoundException("GRUB config not found", grubCfg);
+        // Fedora/RHEL use /boot/grub2/grub.cfg; Debian/Ubuntu use /boot/grub/grub.cfg
+        string? grubCfg = new[] { "/boot/grub2/grub.cfg", "/boot/grub/grub.cfg" }
+            .FirstOrDefault(System.IO.File.Exists)
+            ?? throw new FileNotFoundException("GRUB config not found");
 
         var entries  = new List<BootEntry>();
         var lines    = System.IO.File.ReadAllLines(grubCfg);
