@@ -84,6 +84,27 @@ public class RebootController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Shuts the machine down.
+    /// </summary>
+    [HttpPost("/shutdown")]
+    public IActionResult Shutdown()
+    {
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                RunCommand("shutdown", "/s /t 5");
+            else
+                RunCommand("bash", "-c \"(sleep 5; poweroff) &\"");
+
+            return Ok(new { message = "Shutdown initiated" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     // ── Windows ──────────────────────────────────────────────────────────────
 
     private static List<BootEntry> GetWindowsBootEntries()
