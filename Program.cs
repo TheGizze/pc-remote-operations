@@ -5,6 +5,7 @@ builder.Host.UseWindowsService();
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddHostedService<remote_operations.WebSocketClientService>();
 
 // Listen on all network interfaces so the API is reachable from the local network
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
