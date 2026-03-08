@@ -56,7 +56,7 @@ public class RebootController : ControllerBase
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 if (resolvedId != null)
-                    RunCommand("bcdedit", $"/bootsequence {resolvedId}");
+                    RunCommand("bcdedit", $"/set \"{{fwbootmgr}}\" bootsequence {resolvedId}");
                 else
                     // Ensure the firmware boots back into Windows Boot Manager by default
                     RunCommand("bcdedit", "/set \"{fwbootmgr}\" bootsequence \"{bootmgr}\"");
