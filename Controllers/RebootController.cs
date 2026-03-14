@@ -195,17 +195,43 @@ public class RebootController : ControllerBase
             if (!m.Success) continue;
 
             var title = m.Groups[1].Value.Trim();
+
+            // Rescue kernels and diagnostics are not primary OS entries
+            bool isOsEntry = !Regex.IsMatch(title, @"\(0-rescue-|rescue\b|memtest|diagnostic",
+                RegexOptions.IgnoreCase);
+
             entries.Add(new BootEntry
             {
-                // Use the title as ID: grub2-reboot accepts titles and it's more reliable
-                // than numeric indices, which diverge when submenus are present in grub.cfg.
                 Id          = title,
                 Description = title,
                 IsDefault   = index.ToString() == savedDefault,
-                IsOsEntry   = true
+                IsOsEntry   = isOsEntry
             });
             index++;
         }
+
+        // Use grubby to get the current default OS and add it if not already listed
+        try
+        {
+            var grubbyOutput = RunCommand("grubby", "--info DEFAULT");
+            var titleMatch   = Regex.Match(grubbyOutput, @"^title=""?([^""\n]+)""?", RegexOptions.Multiline);
+            if (titleMatch.Success)
+            {
+                var rawTitle     = titleMatch.Groups[1].Value.Trim();
+            var currentTitle = Regex.Replace(rawTitle, @"\s*\([^)]*\)", "").Trim();
+                if (!entries.Any(e => string.Equals(e.Id, currentTitle, StringComparison.OrdinalIgnoreCase)))
+                {
+                    entries.Insert(0, new BootEntry
+                    {
+                        Id          = currentTitle,
+                        Description = currentTitle,
+                        IsDefault   = true,
+                        IsOsEntry   = true
+                    });
+                }
+            }
+        }
+        catch { /* grubby not available; rely on grub.cfg entries */ }
 
         return entries;
     }
