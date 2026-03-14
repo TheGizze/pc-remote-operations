@@ -127,10 +127,6 @@ public class RebootController : ControllerBase
             if (m.Success) defaultId = m.Groups[1].Value.Trim();
         }
 
-        // Skip non-bootable / manager entries
-        var skipIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "{bootmgr}", "{fwbootmgr}", "{memdiag}", "{ntldr}", "{ramdiskoptions}" };
-
         foreach (var block in blocks)
         {
             var idMatch   = Regex.Match(block, @"identifier\s+(\{[^}]+\})", RegexOptions.IgnoreCase);
@@ -138,14 +134,32 @@ public class RebootController : ControllerBase
 
             if (!idMatch.Success || !descMatch.Success) continue;
 
-            var id = idMatch.Groups[1].Value.Trim();
-            if (skipIds.Contains(id)) continue;
+            var id          = idMatch.Groups[1].Value.Trim();
+            var description = descMatch.Groups[1].Value.Trim();
+            var blockType   = block.TrimStart().Split('\n')[0].Trim();
+
+            // Skip manager / diagnostic entries by block type
+            if (blockType.StartsWith("Windows Boot Manager",  StringComparison.OrdinalIgnoreCase) ||
+                blockType.StartsWith("Firmware Boot Manager", StringComparison.OrdinalIgnoreCase) ||
+                blockType.StartsWith("Windows Memory Tester", StringComparison.OrdinalIgnoreCase) ||
+                blockType.StartsWith("Real-mode Boot Sector", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Windows OS entries have block type "Windows Boot Loader".
+            // Linux/other OS entries appear as "Firmware Application" with a vendor EFI path;
+            // PXE/network boot entries also appear as "Firmware Application" but their
+            // description starts with "UEFI:" — use that to tell them apart.
+            bool isOsEntry =
+                blockType.StartsWith("Windows Boot Loader", StringComparison.OrdinalIgnoreCase) ||
+                (blockType.StartsWith("Firmware Application", StringComparison.OrdinalIgnoreCase) &&
+                 !description.StartsWith("UEFI:", StringComparison.OrdinalIgnoreCase));
 
             entries.Add(new BootEntry
             {
                 Id          = id,
-                Description = descMatch.Groups[1].Value.Trim(),
-                IsDefault   = id.Equals(defaultId, StringComparison.OrdinalIgnoreCase)
+                Description = description,
+                IsDefault   = id.Equals(defaultId, StringComparison.OrdinalIgnoreCase),
+                IsOsEntry   = isOsEntry
             });
         }
 
@@ -187,7 +201,8 @@ public class RebootController : ControllerBase
                 // than numeric indices, which diverge when submenus are present in grub.cfg.
                 Id          = title,
                 Description = title,
-                IsDefault   = index.ToString() == savedDefault
+                IsDefault   = index.ToString() == savedDefault,
+                IsOsEntry   = true
             });
             index++;
         }
@@ -227,6 +242,7 @@ public record BootEntry
     public string Id          { get; init; } = "";
     public string Description { get; init; } = "";
     public bool   IsDefault   { get; init; }
+    public bool   IsOsEntry   { get; init; }
 }
 
 public record RebootRequest(string? TargetEntryId, string? TargetDescription);
