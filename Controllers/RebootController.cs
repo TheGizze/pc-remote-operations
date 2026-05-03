@@ -203,7 +203,7 @@ public class RebootController : ControllerBase
             entries.Add(new BootEntry
             {
                 Id          = title,
-                Description = title,
+                Description = NormalizeDistroId(title),
                 IsDefault   = index.ToString() == savedDefault,
                 IsOsEntry   = isOsEntry,
                 GrubTitle   = title
@@ -225,7 +225,7 @@ public class RebootController : ControllerBase
                     entries.Insert(0, new BootEntry
                     {
                         Id          = currentTitle,
-                        Description = currentTitle,
+                        Description = NormalizeDistroId(currentTitle),
                         IsDefault   = true,
                         IsOsEntry   = true,
                         GrubTitle   = rawTitle
@@ -239,6 +239,15 @@ public class RebootController : ControllerBase
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    // Reduce a GRUB menuentry title to the short distro name that matches the
+    // EFI NVRAM label Windows reports via bcdedit (e.g. "Fedora").
+    private static string NormalizeDistroId(string title)
+    {
+        var stripped  = Regex.Replace(title, @"\s*\([^)]*\)", "").Trim();
+        var firstWord = stripped.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        return string.IsNullOrEmpty(firstWord) ? title : firstWord;
+    }
 
     private static string RunCommand(string executable, string arguments)
     {
