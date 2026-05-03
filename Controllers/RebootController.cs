@@ -205,7 +205,8 @@ public class RebootController : ControllerBase
                 Id          = title,
                 Description = title,
                 IsDefault   = index.ToString() == savedDefault,
-                IsOsEntry   = isOsEntry
+                IsOsEntry   = isOsEntry,
+                GrubTitle   = title
             });
             index++;
         }
@@ -226,7 +227,8 @@ public class RebootController : ControllerBase
                         Id          = currentTitle,
                         Description = currentTitle,
                         IsDefault   = true,
-                        IsOsEntry   = true
+                        IsOsEntry   = true,
+                        GrubTitle   = rawTitle
                     });
                 }
             }
@@ -265,10 +267,11 @@ public class RebootController : ControllerBase
 
 public record BootEntry
 {
-    public string Id          { get; init; } = "";
-    public string Description { get; init; } = "";
-    public bool   IsDefault   { get; init; }
-    public bool   IsOsEntry   { get; init; }
+    public string  Id          { get; init; } = "";
+    public string  Description { get; init; } = "";
+    public bool    IsDefault   { get; init; }
+    public bool    IsOsEntry   { get; init; }
+    public string? GrubTitle   { get; init; }
 }
 
 public record RebootRequest(string? TargetEntryId, string? TargetDescription);
