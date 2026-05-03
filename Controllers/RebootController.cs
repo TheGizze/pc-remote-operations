@@ -170,70 +170,100 @@ public class RebootController : ControllerBase
 
     private static List<BootEntry> GetLinuxBootEntries()
     {
-        // Read GRUB config and extract menuentry titles; index == grub-reboot argument
-        // Fedora/RHEL use /boot/grub2/grub.cfg; Debian/Ubuntu use /boot/grub/grub.cfg
         string? grubCfg = new[] { "/boot/grub2/grub.cfg", "/boot/grub/grub.cfg" }
             .FirstOrDefault(System.IO.File.Exists)
             ?? throw new FileNotFoundException("GRUB config not found");
 
-        var entries  = new List<BootEntry>();
-        var lines    = System.IO.File.ReadAllLines(grubCfg);
-        var pattern  = new Regex(@"^menuentry\s+'([^']+)'", RegexOptions.Multiline);
+        var cfgText  = System.IO.File.ReadAllText(grubCfg);
+        var cfgLines = cfgText.Split('\n');
+        // Modern Fedora/RHEL use BLS: Linux kernels are injected into the GRUB menu at
+        // runtime by blscfg and never appear as menuentry blocks in grub.cfg.
+        bool isBls = cfgText.Contains("blscfg");
 
-        // Also check for saved/default entry
+        var entries = new List<BootEntry>();
+
         string? savedDefault = null;
-        foreach (var line in lines)
+        foreach (var line in cfgLines)
         {
             var sm = Regex.Match(line, @"set default=""?(\d+)""?");
             if (sm.Success) { savedDefault = sm.Groups[1].Value; break; }
         }
-
-        int index = 0;
-        foreach (var line in lines)
+        try
         {
-            var m = pattern.Match(line);
+            var env = RunCommand("grub2-editenv", "list");
+            var em  = Regex.Match(env, @"saved_entry=(\S+)");
+            if (em.Success) savedDefault = em.Groups[1].Value.Trim();
+        }
+        catch { }
+
+        if (isBls)
+        {
+            // grubby --info=ALL returns every kernel entry with its correct GRUB menu index.
+            // Parsed line-by-line so blank-line separators between entries are not required.
+            try
+            {
+                var grubbyAll = RunCommand("grubby", "--info=ALL");
+                int? curIdx = null;
+                foreach (var line in grubbyAll.Replace("\r\n", "\n").Split('\n'))
+                {
+                    var im = Regex.Match(line, @"^index=(-?\d+)");
+                    if (im.Success)
+                    {
+                        curIdx = int.Parse(im.Groups[1].Value);
+                        continue;
+                    }
+                    var tm = Regex.Match(line, @"^title=(.+)");
+                    if (tm.Success && curIdx is { } idx && idx != -1)
+                    {
+                        var rawTitle = tm.Groups[1].Value.Trim().Trim('"');
+                        bool isOs    = !Regex.IsMatch(rawTitle,
+                            @"0-rescue-|rescue\b|memtest|diagnostic", RegexOptions.IgnoreCase);
+                        entries.Add(new BootEntry
+                        {
+                            Id          = rawTitle,
+                            Description = NormalizeDistroId(rawTitle),
+                            IsDefault   = idx.ToString() == savedDefault,
+                            IsOsEntry   = isOs,
+                            GrubTitle   = idx.ToString()
+                        });
+                        curIdx = null;
+                    }
+                }
+            }
+            catch { /* grubby unavailable */ }
+        }
+
+        // On non-BLS systems all entries come from grub.cfg (blsCount == 0).
+        // On BLS systems only non-Linux entries such as Windows appear as menuentry
+        // blocks in grub.cfg; their GRUB index is offset by the number of BLS entries.
+        int blsCount = entries.Count;
+
+        var menuPattern = new Regex(@"^\s*menuentry\s+['""]([^'""]+)['""]");
+        int cfgIdx = 0;
+        foreach (var line in cfgLines)
+        {
+            var m = menuPattern.Match(line);
             if (!m.Success) continue;
 
-            var title = m.Groups[1].Value.Trim();
+            var title   = m.Groups[1].Value.Trim();
+            var grubIdx = (blsCount + cfgIdx).ToString();
+            cfgIdx++; // increment for every matched menuentry to keep indices accurate
 
-            // Rescue kernels and diagnostics are not primary OS entries
-            bool isOsEntry = !Regex.IsMatch(title, @"\(0-rescue-|rescue\b|memtest|diagnostic",
-                RegexOptions.IgnoreCase);
+            if (Regex.IsMatch(title, @"UEFI Firmware|Firmware Settings", RegexOptions.IgnoreCase))
+                continue;
+
+            bool isOs = !Regex.IsMatch(title,
+                @"0-rescue-|rescue\b|memtest|diagnostic", RegexOptions.IgnoreCase);
 
             entries.Add(new BootEntry
             {
                 Id          = title,
                 Description = NormalizeDistroId(title),
-                IsDefault   = index.ToString() == savedDefault,
-                IsOsEntry   = isOsEntry,
-                GrubTitle   = title
+                IsDefault   = grubIdx == savedDefault,
+                IsOsEntry   = isOs,
+                GrubTitle   = grubIdx
             });
-            index++;
         }
-
-        // Use grubby to get the current default OS and add it if not already listed
-        try
-        {
-            var grubbyOutput = RunCommand("grubby", "--info DEFAULT");
-            var titleMatch   = Regex.Match(grubbyOutput, @"^title=""?([^""\n]+)""?", RegexOptions.Multiline);
-            if (titleMatch.Success)
-            {
-                var rawTitle     = titleMatch.Groups[1].Value.Trim();
-            var currentTitle = Regex.Replace(rawTitle, @"\s*\([^)]*\)", "").Trim();
-                if (!entries.Any(e => string.Equals(e.Id, currentTitle, StringComparison.OrdinalIgnoreCase)))
-                {
-                    entries.Insert(0, new BootEntry
-                    {
-                        Id          = currentTitle,
-                        Description = NormalizeDistroId(currentTitle),
-                        IsDefault   = true,
-                        IsOsEntry   = true,
-                        GrubTitle   = rawTitle
-                    });
-                }
-            }
-        }
-        catch { /* grubby not available; rely on grub.cfg entries */ }
 
         return entries;
     }
