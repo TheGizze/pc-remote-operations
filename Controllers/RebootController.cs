@@ -7,7 +7,7 @@ namespace remote_operations.Controllers;
 
 [ApiController]
 [Route("[controller]")]
-public class RebootController : ControllerBase
+public class RebootController(ILogger<RebootController> logger) : ControllerBase
 {
     /// <summary>
     /// Returns the available boot entries on this machine.
@@ -27,6 +27,7 @@ public class RebootController : ControllerBase
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "GetBootEntries failed");
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -65,9 +66,16 @@ public class RebootController : ControllerBase
             }
             else
             {
-                if(resolvedId != null)
+                if (resolvedId != null)
                 {
-                    RunCommand("bash", $"-c \"grub2-reboot {resolvedId}\"");
+                    // Resolve the stored numeric GrubTitle so grub2-reboot receives an
+                    // index ("5") rather than the raw title string which may contain
+                    // parentheses that bash would misinterpret.
+                    var linuxEntries = GetLinuxBootEntries();
+                    var grubTarget = linuxEntries
+                        .FirstOrDefault(e => e.Id.Equals(resolvedId, StringComparison.OrdinalIgnoreCase))
+                        ?.GrubTitle ?? resolvedId;
+                    RunCommand("grub2-reboot", grubTarget);
                 }
                 RunCommand("bash", "-c \"(sleep 5; reboot) &\"");
             }
@@ -80,6 +88,7 @@ public class RebootController : ControllerBase
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "Reboot failed (targetEntryId={TargetEntryId})", request?.TargetEntryId);
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -101,6 +110,7 @@ public class RebootController : ControllerBase
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "Shutdown failed");
             return StatusCode(500, new { error = ex.Message });
         }
     }
@@ -196,47 +206,37 @@ public class RebootController : ControllerBase
         }
         catch { }
 
+        // How many BLS entries precede the traditional menuentry blocks in the GRUB menu.
+        // Always count .conf files so the offset is correct even if grubby only returns one entry.
+        int blsCount = 0;
         if (isBls)
         {
-            // grubby --info=ALL returns every kernel entry with its correct GRUB menu index.
-            // Parsed line-by-line so blank-line separators between entries are not required.
+            const string blsDir = "/boot/loader/entries";
+            if (System.IO.Directory.Exists(blsDir))
+                blsCount = System.IO.Directory.GetFiles(blsDir, "*.conf").Length;
+
+            // Add only the default (index 0) kernel — older kernels and rescue variants
+            // are not useful boot targets from the remote-operations perspective.
             try
             {
-                var grubbyAll = RunCommand("grubby", "--info=ALL");
-                int? curIdx = null;
-                foreach (var line in grubbyAll.Replace("\r\n", "\n").Split('\n'))
+                var grubbyOut = RunCommand("grubby", "--info=DEFAULT");
+                var idxM      = Regex.Match(grubbyOut, @"^index=(-?\d+)",  RegexOptions.Multiline);
+                var titleM    = Regex.Match(grubbyOut, @"^title=(.+)",     RegexOptions.Multiline);
+                if (idxM.Success && titleM.Success && idxM.Groups[1].Value != "-1")
                 {
-                    var im = Regex.Match(line, @"^index=(-?\d+)");
-                    if (im.Success)
+                    var rawTitle = titleM.Groups[1].Value.Trim().Trim('"');
+                    entries.Add(new BootEntry
                     {
-                        curIdx = int.Parse(im.Groups[1].Value);
-                        continue;
-                    }
-                    var tm = Regex.Match(line, @"^title=(.+)");
-                    if (tm.Success && curIdx is { } idx && idx != -1)
-                    {
-                        var rawTitle = tm.Groups[1].Value.Trim().Trim('"');
-                        bool isOs    = !Regex.IsMatch(rawTitle,
-                            @"0-rescue-|rescue\b|memtest|diagnostic", RegexOptions.IgnoreCase);
-                        entries.Add(new BootEntry
-                        {
-                            Id          = rawTitle,
-                            Description = NormalizeDistroId(rawTitle),
-                            IsDefault   = idx.ToString() == savedDefault,
-                            IsOsEntry   = isOs,
-                            GrubTitle   = idx.ToString()
-                        });
-                        curIdx = null;
-                    }
+                        Id          = rawTitle,
+                        Description = NormalizeDistroId(rawTitle),
+                        IsDefault   = true,
+                        IsOsEntry   = true,
+                        GrubTitle   = idxM.Groups[1].Value.Trim()
+                    });
                 }
             }
             catch { /* grubby unavailable */ }
         }
-
-        // On non-BLS systems all entries come from grub.cfg (blsCount == 0).
-        // On BLS systems only non-Linux entries such as Windows appear as menuentry
-        // blocks in grub.cfg; their GRUB index is offset by the number of BLS entries.
-        int blsCount = entries.Count;
 
         var menuPattern = new Regex(@"^\s*menuentry\s+['""]([^'""]+)['""]");
         int cfgIdx = 0;
