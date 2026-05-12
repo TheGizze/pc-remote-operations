@@ -1,7 +1,18 @@
+using Microsoft.AspNetCore.HttpLogging;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Enables proper Windows Service lifecycle (start/stop signals from SCM)
 builder.Host.UseWindowsService();
+
+builder.Services.AddHttpLogging(o =>
+{
+    o.LoggingFields = HttpLoggingFields.RequestMethod
+                    | HttpLoggingFields.RequestPath
+                    | HttpLoggingFields.ResponseStatusCode
+                    | HttpLoggingFields.Duration;
+    o.CombineLogs = true;
+});
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -14,6 +25,7 @@ var app = builder.Build();
 
 app.MapOpenApi();
 
+app.UseHttpLogging();
 app.UseAuthorization();
 app.MapControllers();
 
